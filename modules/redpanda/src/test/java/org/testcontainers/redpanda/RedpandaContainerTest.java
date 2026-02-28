@@ -8,27 +8,17 @@ import lombok.SneakyThrows;
 import org.apache.kafka.clients.admin.AdminClient;
 import org.apache.kafka.clients.admin.AdminClientConfig;
 import org.apache.kafka.clients.admin.NewTopic;
-import org.apache.kafka.clients.consumer.ConsumerConfig;
-import org.apache.kafka.clients.consumer.ConsumerRecord;
-import org.apache.kafka.clients.consumer.ConsumerRecords;
-import org.apache.kafka.clients.consumer.KafkaConsumer;
-import org.apache.kafka.clients.producer.KafkaProducer;
-import org.apache.kafka.clients.producer.ProducerConfig;
-import org.apache.kafka.clients.producer.ProducerRecord;
 import org.apache.kafka.common.config.SaslConfigs;
 import org.apache.kafka.common.errors.SaslAuthenticationException;
 import org.apache.kafka.common.errors.TopicAuthorizationException;
-import org.apache.kafka.common.serialization.StringDeserializer;
-import org.apache.kafka.common.serialization.StringSerializer;
 import org.awaitility.Awaitility;
-import org.junit.Test;
-import org.rnorth.ducttape.unreliables.Unreliables;
+import org.junit.jupiter.api.Test;
 import org.testcontainers.containers.GenericContainer;
 import org.testcontainers.containers.Network;
+import org.testcontainers.containers.SocatContainer;
 import org.testcontainers.images.builder.Transferable;
 import org.testcontainers.utility.DockerImageName;
 
-import java.time.Duration;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.HashMap;
@@ -39,16 +29,15 @@ import java.util.concurrent.TimeUnit;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
-import static org.assertj.core.api.Assertions.tuple;
 
-public class RedpandaContainerTest {
+class RedpandaContainerTest extends AbstractRedpanda {
 
     private static final String REDPANDA_IMAGE = "docker.redpanda.com/redpandadata/redpanda:v22.2.1";
 
     private static final DockerImageName REDPANDA_DOCKER_IMAGE = DockerImageName.parse(REDPANDA_IMAGE);
 
     @Test
-    public void testUsage() throws Exception {
+    void testUsage() throws Exception {
         try (RedpandaContainer container = new RedpandaContainer(REDPANDA_DOCKER_IMAGE)) {
             container.start();
             testKafkaFunctionality(container.getBootstrapServers());
@@ -56,7 +45,7 @@ public class RedpandaContainerTest {
     }
 
     @Test
-    public void testUsageWithStringImage() throws Exception {
+    void testUsageWithStringImage() throws Exception {
         try (
             // constructorWithVersion {
             RedpandaContainer container = new RedpandaContainer("docker.redpanda.com/redpandadata/redpanda:v23.1.2")
@@ -72,14 +61,21 @@ public class RedpandaContainerTest {
     }
 
     @Test
-    public void testNotCompatibleVersion() {
+    void testNotCompatibleVersion() {
         assertThatThrownBy(() -> new RedpandaContainer("docker.redpanda.com/redpandadata/redpanda:v21.11.19"))
             .isInstanceOf(IllegalArgumentException.class)
             .hasMessageContaining("Redpanda version must be >= v22.2.1");
     }
 
     @Test
-    public void testSchemaRegistry() {
+    void redpandadataRedpandaImageVersion2221ShouldNotBeCompatible() {
+        assertThatThrownBy(() -> new RedpandaContainer("redpandadata/redpanda:v21.11.19"))
+            .isInstanceOf(IllegalArgumentException.class)
+            .hasMessageContaining("Redpanda version must be >= v22.2.1");
+    }
+
+    @Test
+    void testSchemaRegistry() {
         try (RedpandaContainer container = new RedpandaContainer(REDPANDA_DOCKER_IMAGE)) {
             container.start();
 
@@ -109,16 +105,43 @@ public class RedpandaContainerTest {
     }
 
     @Test
-    public void testUsageWithListener() throws Exception {
+    void testUsageWithListener() throws Exception {
         try (
             Network network = Network.newNetwork();
-            // registerListener {
             RedpandaContainer redpanda = new RedpandaContainer("docker.redpanda.com/redpandadata/redpanda:v23.1.7")
                 .withListener(() -> "redpanda:19092")
                 .withNetwork(network);
+            GenericContainer<?> kcat = new GenericContainer<>("confluentinc/cp-kcat:7.9.0")
+                .withCreateContainerCmdModifier(cmd -> {
+                    cmd.withEntrypoint("sh");
+                })
+                .withCopyToContainer(Transferable.of("Message produced by kcat"), "/data/msgs.txt")
+                .withNetwork(network)
+                .withCommand("-c", "tail -f /dev/null")
+        ) {
+            redpanda.start();
+            kcat.start();
+
+            kcat.execInContainer("kcat", "-b", "redpanda:19092", "-t", "msgs", "-P", "-l", "/data/msgs.txt");
+            String stdout = kcat
+                .execInContainer("kcat", "-b", "redpanda:19092", "-C", "-t", "msgs", "-c", "1")
+                .getStdout();
+
+            assertThat(stdout).contains("Message produced by kcat");
+        }
+    }
+
+    @Test
+    void testUsageWithListenerInTheSameNetwork() throws Exception {
+        try (
+            Network network = Network.newNetwork();
+            // registerListener {
+            RedpandaContainer kafka = new RedpandaContainer("docker.redpanda.com/redpandadata/redpanda:v23.1.7")
+                .withListener("kafka:19092")
+                .withNetwork(network);
             // }
             // createKCatContainer {
-            GenericContainer<?> kcat = new GenericContainer<>("confluentinc/cp-kcat:7.4.1")
+            GenericContainer<?> kcat = new GenericContainer<>("confluentinc/cp-kcat:7.9.0")
                 .withCreateContainerCmdModifier(cmd -> {
                     cmd.withEntrypoint("sh");
                 })
@@ -127,20 +150,44 @@ public class RedpandaContainerTest {
                 .withCommand("-c", "tail -f /dev/null")
             // }
         ) {
-            redpanda.start();
+            kafka.start();
             kcat.start();
+
             // produceConsumeMessage {
-            kcat.execInContainer("kcat", "-b", "redpanda:19092", "-t", "msgs", "-P", "-l", "/data/msgs.txt");
+            kcat.execInContainer("kcat", "-b", "kafka:19092", "-t", "msgs", "-P", "-l", "/data/msgs.txt");
             String stdout = kcat
-                .execInContainer("kcat", "-b", "redpanda:19092", "-C", "-t", "msgs", "-c", "1")
+                .execInContainer("kcat", "-b", "kafka:19092", "-C", "-t", "msgs", "-c", "1")
                 .getStdout();
             // }
+
             assertThat(stdout).contains("Message produced by kcat");
         }
     }
 
     @Test
-    public void testUsageWithListenerAndSasl() throws Exception {
+    void testUsageWithListenerFromProxy() throws Exception {
+        try (
+            Network network = Network.newNetwork();
+            // createProxy {
+            SocatContainer socat = new SocatContainer().withNetwork(network).withTarget(2000, "kafka", 19092);
+            // }
+            // registerListenerAndAdvertisedListener {
+            RedpandaContainer kafka = new RedpandaContainer("docker.redpanda.com/redpandadata/redpanda:v23.1.7")
+                .withListener("kafka:19092", () -> socat.getHost() + ":" + socat.getMappedPort(2000))
+                .withNetwork(network)
+            // }
+        ) {
+            socat.start();
+            kafka.start();
+            // produceConsumeMessageFromProxy {
+            String bootstrapServers = String.format("%s:%s", socat.getHost(), socat.getMappedPort(2000));
+            testKafkaFunctionality(bootstrapServers);
+            // }
+        }
+    }
+
+    @Test
+    void testUsageWithListenerAndSasl() throws Exception {
         final String username = "panda";
         final String password = "pandapass";
         final String algorithm = "SCRAM-SHA-256";
@@ -151,9 +198,9 @@ public class RedpandaContainerTest {
                 .enableAuthorization()
                 .enableSasl()
                 .withSuperuser("panda")
-                .withListener(() -> "my-panda:29092")
+                .withListener("my-panda:29092")
                 .withNetwork(network);
-            GenericContainer<?> kcat = new GenericContainer<>("confluentinc/cp-kcat:7.4.1")
+            GenericContainer<?> kcat = new GenericContainer<>("confluentinc/cp-kcat:7.9.0")
                 .withCreateContainerCmdModifier(cmd -> {
                     cmd.withEntrypoint("sh");
                 })
@@ -219,7 +266,7 @@ public class RedpandaContainerTest {
 
     @SneakyThrows
     @Test
-    public void enableSaslWithSuccessfulTopicCreation() {
+    void enableSaslWithSuccessfulTopicCreation() {
         try (
             // security {
             RedpandaContainer redpanda = new RedpandaContainer("docker.redpanda.com/redpandadata/redpanda:v23.1.7")
@@ -242,7 +289,7 @@ public class RedpandaContainerTest {
     }
 
     @Test
-    public void enableSaslWithUnsuccessfulTopicCreation() {
+    void enableSaslWithUnsuccessfulTopicCreation() {
         try (
             RedpandaContainer redpanda = new RedpandaContainer("docker.redpanda.com/redpandadata/redpanda:v23.1.7")
                 .enableAuthorization()
@@ -266,7 +313,7 @@ public class RedpandaContainerTest {
     }
 
     @Test
-    public void enableSaslAndWithAuthenticationError() {
+    void enableSaslAndWithAuthenticationError() {
         try (
             RedpandaContainer redpanda = new RedpandaContainer("docker.redpanda.com/redpandadata/redpanda:v23.1.7")
                 .enableAuthorization()
@@ -288,7 +335,7 @@ public class RedpandaContainerTest {
     }
 
     @Test
-    public void schemaRegistryWithHttpBasic() {
+    void schemaRegistryWithHttpBasic() {
         try (
             RedpandaContainer redpanda = new RedpandaContainer("docker.redpanda.com/redpandadata/redpanda:v23.1.7")
                 .enableSchemaRegistryHttpBasicAuth()
@@ -315,7 +362,7 @@ public class RedpandaContainerTest {
 
     @SneakyThrows
     @Test
-    public void testRestProxy() {
+    void testRestProxy() {
         try (RedpandaContainer redpanda = new RedpandaContainer("docker.redpanda.com/redpandadata/redpanda:v23.1.7")) {
             redpanda.start();
 
@@ -356,70 +403,6 @@ public class RedpandaContainerTest {
                 .getBody()
                 .as(new TypeRef<List<Map<String, String>>>() {});
             assertThat(response).hasSize(3).extracting("value").containsExactly("jsmith", "htanaka", "awalther");
-        }
-    }
-
-    private void testKafkaFunctionality(String bootstrapServers) throws Exception {
-        testKafkaFunctionality(bootstrapServers, 1, 1);
-    }
-
-    private void testKafkaFunctionality(String bootstrapServers, int partitions, int rf) throws Exception {
-        try (
-            AdminClient adminClient = AdminClient.create(
-                ImmutableMap.of(AdminClientConfig.BOOTSTRAP_SERVERS_CONFIG, bootstrapServers)
-            );
-            KafkaProducer<String, String> producer = new KafkaProducer<>(
-                ImmutableMap.of(
-                    ProducerConfig.BOOTSTRAP_SERVERS_CONFIG,
-                    bootstrapServers,
-                    ProducerConfig.CLIENT_ID_CONFIG,
-                    UUID.randomUUID().toString()
-                ),
-                new StringSerializer(),
-                new StringSerializer()
-            );
-            KafkaConsumer<String, String> consumer = new KafkaConsumer<>(
-                ImmutableMap.of(
-                    ConsumerConfig.BOOTSTRAP_SERVERS_CONFIG,
-                    bootstrapServers,
-                    ConsumerConfig.GROUP_ID_CONFIG,
-                    "tc-" + UUID.randomUUID(),
-                    ConsumerConfig.AUTO_OFFSET_RESET_CONFIG,
-                    "earliest"
-                ),
-                new StringDeserializer(),
-                new StringDeserializer()
-            );
-        ) {
-            String topicName = "messages-" + UUID.randomUUID();
-
-            Collection<NewTopic> topics = Collections.singletonList(new NewTopic(topicName, partitions, (short) rf));
-            adminClient.createTopics(topics).all().get(30, TimeUnit.SECONDS);
-
-            consumer.subscribe(Collections.singletonList(topicName));
-
-            producer.send(new ProducerRecord<>(topicName, "testcontainers", "rulezzz")).get();
-
-            Unreliables.retryUntilTrue(
-                10,
-                TimeUnit.SECONDS,
-                () -> {
-                    ConsumerRecords<String, String> records = consumer.poll(Duration.ofMillis(100));
-
-                    if (records.isEmpty()) {
-                        return false;
-                    }
-
-                    assertThat(records)
-                        .hasSize(1)
-                        .extracting(ConsumerRecord::topic, ConsumerRecord::key, ConsumerRecord::value)
-                        .containsExactly(tuple(topicName, "testcontainers", "rulezzz"));
-
-                    return true;
-                }
-            );
-
-            consumer.unsubscribe();
         }
     }
 

@@ -46,7 +46,10 @@ import java.util.concurrent.TimeUnit;
  * {@code selenium/standalone-edge}, {@code selenium/standalone-chrome-debug}, {@code selenium/standalone-firefox-debug}
  * <p>
  * Exposed ports: 4444
+ *
+ * @deprecated use {@link org.testcontainers.selenium.BrowserWebDriverContainer} instead.
  */
+@Deprecated
 public class BrowserWebDriverContainer<SELF extends BrowserWebDriverContainer<SELF>>
     extends GenericContainer<SELF>
     implements LinkableContainer, TestLifecycleAware {
@@ -103,17 +106,7 @@ public class BrowserWebDriverContainer<SELF extends BrowserWebDriverContainer<SE
 
     public BrowserWebDriverContainer() {
         super();
-        final WaitStrategy logWaitStrategy = new LogMessageWaitStrategy()
-            .withRegEx(
-                ".*(RemoteWebDriver instances should connect to|Selenium Server is up and running|Started Selenium Standalone).*\n"
-            )
-            .withStartupTimeout(Duration.of(15, ChronoUnit.SECONDS));
-
-        this.waitStrategy =
-            new WaitAllStrategy()
-                .withStrategy(logWaitStrategy)
-                .withStrategy(new HostPortWaitStrategy())
-                .withStartupTimeout(Duration.of(15, ChronoUnit.SECONDS));
+        this.waitStrategy = getDefaultWaitStrategy();
 
         this.withRecordingFileFactory(new DefaultRecordingFileFactory());
     }
@@ -134,17 +127,7 @@ public class BrowserWebDriverContainer<SELF extends BrowserWebDriverContainer<SE
         super(dockerImageName);
         // we assert compatibility with the chrome/firefox/edge image later, after capabilities are processed
 
-        final WaitStrategy logWaitStrategy = new LogMessageWaitStrategy()
-            .withRegEx(
-                ".*(RemoteWebDriver instances should connect to|Selenium Server is up and running|Started Selenium Standalone).*\n"
-            )
-            .withStartupTimeout(Duration.of(15, ChronoUnit.SECONDS));
-
-        this.waitStrategy =
-            new WaitAllStrategy()
-                .withStrategy(logWaitStrategy)
-                .withStrategy(new HostPortWaitStrategy())
-                .withStartupTimeout(Duration.of(15, ChronoUnit.SECONDS));
+        this.waitStrategy = getDefaultWaitStrategy();
 
         this.withRecordingFileFactory(new DefaultRecordingFileFactory());
 
@@ -451,6 +434,19 @@ public class BrowserWebDriverContainer<SELF extends BrowserWebDriverContainer<SE
     public SELF withRecordingFileFactory(RecordingFileFactory recordingFileFactory) {
         this.recordingFileFactory = recordingFileFactory;
         return self();
+    }
+
+    private WaitStrategy getDefaultWaitStrategy() {
+        final WaitStrategy logWaitStrategy = new LogMessageWaitStrategy()
+            .withRegEx(
+                ".*(RemoteWebDriver instances should connect to|Selenium Server is up and running|Started Selenium Standalone).*\n"
+            )
+            .withStartupTimeout(Duration.of(60, ChronoUnit.SECONDS));
+
+        return new WaitAllStrategy()
+            .withStrategy(logWaitStrategy)
+            .withStrategy(new HostPortWaitStrategy())
+            .withStartupTimeout(Duration.of(60, ChronoUnit.SECONDS));
     }
 
     public enum VncRecordingMode {

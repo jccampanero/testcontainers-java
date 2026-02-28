@@ -1,34 +1,30 @@
 package org.testcontainers.containers;
 
 import com.google.common.collect.ImmutableMap;
+import lombok.SneakyThrows;
 import org.apache.kafka.clients.admin.AdminClient;
 import org.apache.kafka.clients.admin.AdminClientConfig;
 import org.apache.kafka.clients.admin.NewTopic;
-import org.apache.kafka.clients.consumer.ConsumerConfig;
-import org.apache.kafka.clients.consumer.ConsumerRecord;
-import org.apache.kafka.clients.consumer.ConsumerRecords;
-import org.apache.kafka.clients.consumer.KafkaConsumer;
-import org.apache.kafka.clients.producer.KafkaProducer;
-import org.apache.kafka.clients.producer.ProducerConfig;
-import org.apache.kafka.clients.producer.ProducerRecord;
-import org.apache.kafka.common.serialization.StringDeserializer;
-import org.apache.kafka.common.serialization.StringSerializer;
-import org.junit.Test;
-import org.rnorth.ducttape.unreliables.Unreliables;
+import org.apache.kafka.common.config.SaslConfigs;
+import org.apache.kafka.common.errors.SaslAuthenticationException;
+import org.apache.kafka.common.errors.TopicAuthorizationException;
+import org.awaitility.Awaitility;
+import org.junit.jupiter.api.Test;
+import org.testcontainers.AbstractKafka;
 import org.testcontainers.Testcontainers;
 import org.testcontainers.images.builder.Transferable;
 import org.testcontainers.utility.DockerImageName;
+import org.testcontainers.utility.MountableFile;
 
-import java.time.Duration;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.UUID;
 import java.util.concurrent.TimeUnit;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.tuple;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
-public class KafkaContainerTest {
+class KafkaContainerTest extends AbstractKafka {
 
     private static final DockerImageName KAFKA_TEST_IMAGE = DockerImageName.parse("confluentinc/cp-kafka:6.2.1");
 
@@ -39,7 +35,7 @@ public class KafkaContainerTest {
     );
 
     @Test
-    public void testUsage() throws Exception {
+    void testUsage() throws Exception {
         try (KafkaContainer kafka = new KafkaContainer(KAFKA_TEST_IMAGE)) {
             kafka.start();
             testKafkaFunctionality(kafka.getBootstrapServers());
@@ -47,7 +43,7 @@ public class KafkaContainerTest {
     }
 
     @Test
-    public void testUsageWithSpecificImage() throws Exception {
+    void testUsageWithSpecificImage() throws Exception {
         try (
             // constructorWithVersion {
             KafkaContainer kafka = new KafkaContainer(DockerImageName.parse("confluentinc/cp-kafka:6.2.1"))
@@ -63,7 +59,7 @@ public class KafkaContainerTest {
     }
 
     @Test
-    public void testUsageWithVersion() throws Exception {
+    void testUsageWithVersion() throws Exception {
         try (KafkaContainer kafka = new KafkaContainer("6.2.1")) {
             kafka.start();
             testKafkaFunctionality(kafka.getBootstrapServers());
@@ -71,7 +67,7 @@ public class KafkaContainerTest {
     }
 
     @Test
-    public void testExternalZookeeperWithExternalNetwork() throws Exception {
+    void testExternalZookeeperWithExternalNetwork() throws Exception {
         try (
             Network network = Network.newNetwork();
             // withExternalZookeeper {
@@ -93,7 +89,7 @@ public class KafkaContainerTest {
     }
 
     @Test
-    public void testConfluentPlatformVersion7() throws Exception {
+    void testConfluentPlatformVersion7() throws Exception {
         try (KafkaContainer kafka = new KafkaContainer(DockerImageName.parse("confluentinc/cp-kafka:7.2.2"))) {
             kafka.start();
             testKafkaFunctionality(kafka.getBootstrapServers());
@@ -101,7 +97,7 @@ public class KafkaContainerTest {
     }
 
     @Test
-    public void testConfluentPlatformVersion5() throws Exception {
+    void testConfluentPlatformVersion5() throws Exception {
         try (KafkaContainer kafka = new KafkaContainer(DockerImageName.parse("confluentinc/cp-kafka:5.4.3"))) {
             kafka.start();
             testKafkaFunctionality(kafka.getBootstrapServers());
@@ -109,7 +105,7 @@ public class KafkaContainerTest {
     }
 
     @Test
-    public void testWithHostExposedPort() throws Exception {
+    void testWithHostExposedPort() throws Exception {
         Testcontainers.exposeHostPorts(12345);
         try (KafkaContainer kafka = new KafkaContainer(KAFKA_TEST_IMAGE)) {
             kafka.start();
@@ -118,7 +114,7 @@ public class KafkaContainerTest {
     }
 
     @Test
-    public void testWithHostExposedPortAndExternalNetwork() throws Exception {
+    void testWithHostExposedPortAndExternalNetwork() throws Exception {
         Testcontainers.exposeHostPorts(12345);
         try (KafkaContainer kafka = new KafkaContainer(KAFKA_TEST_IMAGE).withNetwork(Network.newNetwork())) {
             kafka.start();
@@ -127,7 +123,7 @@ public class KafkaContainerTest {
     }
 
     @Test
-    public void testUsageKraftBeforeConfluentPlatformVersion74() throws Exception {
+    void testUsageKraftBeforeConfluentPlatformVersion74() throws Exception {
         try (
             KafkaContainer kafka = new KafkaContainer(DockerImageName.parse("confluentinc/cp-kafka:7.0.1")).withKraft()
         ) {
@@ -137,7 +133,7 @@ public class KafkaContainerTest {
     }
 
     @Test
-    public void testUsageKraftAfterConfluentPlatformVersion74() throws Exception {
+    void testUsageKraftAfterConfluentPlatformVersion74() throws Exception {
         try (
             // withKraftMode {
             KafkaContainer kafka = new KafkaContainer(DockerImageName.parse("confluentinc/cp-kafka:7.4.0")).withKraft()
@@ -149,7 +145,7 @@ public class KafkaContainerTest {
     }
 
     @Test
-    public void testNotSupportedKraftVersion() {
+    void testNotSupportedKraftVersion() {
         try (
             KafkaContainer kafka = new KafkaContainer(DockerImageName.parse("confluentinc/cp-kafka:6.2.1")).withKraft()
         ) {} catch (IllegalArgumentException e) {
@@ -161,7 +157,7 @@ public class KafkaContainerTest {
     }
 
     @Test
-    public void testKraftZookeeperMutualExclusion() {
+    void testKraftZookeeperMutualExclusion() {
         try (
             KafkaContainer kafka = new KafkaContainer(KAFKA_KRAFT_TEST_IMAGE).withKraft().withExternalZookeeper("")
         ) {} catch (IllegalStateException e) {
@@ -182,7 +178,7 @@ public class KafkaContainerTest {
     }
 
     @Test
-    public void testKraftPrecedenceOverEmbeddedZookeeper() throws Exception {
+    void testKraftPrecedenceOverEmbeddedZookeeper() throws Exception {
         try (KafkaContainer kafka = new KafkaContainer(KAFKA_KRAFT_TEST_IMAGE).withEmbeddedZookeeper().withKraft()) {
             kafka.start();
             testKafkaFunctionality(kafka.getBootstrapServers());
@@ -190,16 +186,14 @@ public class KafkaContainerTest {
     }
 
     @Test
-    public void testUsageWithListener() throws Exception {
+    void testUsageWithListener() throws Exception {
         try (
             Network network = Network.newNetwork();
-            // registerListener {
             KafkaContainer kafka = new KafkaContainer(KAFKA_KRAFT_TEST_IMAGE)
                 .withListener(() -> "kafka:19092")
                 .withNetwork(network);
-            // }
             // createKCatContainer {
-            GenericContainer<?> kcat = new GenericContainer<>("confluentinc/cp-kcat:7.4.1")
+            GenericContainer<?> kcat = new GenericContainer<>("confluentinc/cp-kcat:7.9.0")
                 .withCreateContainerCmdModifier(cmd -> {
                     cmd.withEntrypoint("sh");
                 })
@@ -220,67 +214,133 @@ public class KafkaContainerTest {
         }
     }
 
-    protected void testKafkaFunctionality(String bootstrapServers) throws Exception {
-        testKafkaFunctionality(bootstrapServers, 1, 1);
+    @SneakyThrows
+    @Test
+    void shouldConfigureAuthenticationWithSaslUsingJaas() {
+        try (
+            KafkaContainer kafka = new KafkaContainer(DockerImageName.parse("confluentinc/cp-kafka:6.2.1"))
+                .withEnv("KAFKA_LISTENER_SECURITY_PROTOCOL_MAP", "PLAINTEXT:SASL_PLAINTEXT,BROKER:SASL_PLAINTEXT")
+                .withEnv("KAFKA_SASL_MECHANISM_INTER_BROKER_PROTOCOL", "PLAIN")
+                .withEnv("KAFKA_LISTENER_NAME_PLAINTEXT_SASL_ENABLED_MECHANISMS", "PLAIN")
+                .withEnv("KAFKA_LISTENER_NAME_BROKER_SASL_ENABLED_MECHANISMS", "PLAIN")
+                .withEnv("KAFKA_LISTENER_NAME_BROKER_PLAIN_SASL_JAAS_CONFIG", getJaasConfig())
+                .withEnv("KAFKA_LISTENER_NAME_PLAINTEXT_PLAIN_SASL_JAAS_CONFIG", getJaasConfig())
+        ) {
+            kafka.start();
+
+            testSecurePlainKafkaFunctionality(kafka.getBootstrapServers());
+        }
     }
 
-    protected void testKafkaFunctionality(String bootstrapServers, int partitions, int rf) throws Exception {
+    @SneakyThrows
+    @Test
+    void shouldConfigureAuthenticationWithSaslScramUsingJaas() {
         try (
-            AdminClient adminClient = AdminClient.create(
-                ImmutableMap.of(AdminClientConfig.BOOTSTRAP_SERVERS_CONFIG, bootstrapServers)
-            );
-            KafkaProducer<String, String> producer = new KafkaProducer<>(
-                ImmutableMap.of(
-                    ProducerConfig.BOOTSTRAP_SERVERS_CONFIG,
-                    bootstrapServers,
-                    ProducerConfig.CLIENT_ID_CONFIG,
-                    UUID.randomUUID().toString()
-                ),
-                new StringSerializer(),
-                new StringSerializer()
-            );
-            KafkaConsumer<String, String> consumer = new KafkaConsumer<>(
-                ImmutableMap.of(
-                    ConsumerConfig.BOOTSTRAP_SERVERS_CONFIG,
-                    bootstrapServers,
-                    ConsumerConfig.GROUP_ID_CONFIG,
-                    "tc-" + UUID.randomUUID(),
-                    ConsumerConfig.AUTO_OFFSET_RESET_CONFIG,
-                    "earliest"
-                ),
-                new StringDeserializer(),
-                new StringDeserializer()
-            );
-        ) {
-            String topicName = "messages-" + UUID.randomUUID();
-
-            Collection<NewTopic> topics = Collections.singletonList(new NewTopic(topicName, partitions, (short) rf));
-            adminClient.createTopics(topics).all().get(30, TimeUnit.SECONDS);
-
-            consumer.subscribe(Collections.singletonList(topicName));
-
-            producer.send(new ProducerRecord<>(topicName, "testcontainers", "rulezzz")).get();
-
-            Unreliables.retryUntilTrue(
-                10,
-                TimeUnit.SECONDS,
-                () -> {
-                    ConsumerRecords<String, String> records = consumer.poll(Duration.ofMillis(100));
-
-                    if (records.isEmpty()) {
-                        return false;
-                    }
-
-                    assertThat(records)
-                        .hasSize(1)
-                        .extracting(ConsumerRecord::topic, ConsumerRecord::key, ConsumerRecord::value)
-                        .containsExactly(tuple(topicName, "testcontainers", "rulezzz"));
-
-                    return true;
+            KafkaContainer kafka = new KafkaContainer(DockerImageName.parse("confluentinc/cp-kafka:7.7.0")) {
+                protected String commandKraft() {
+                    String command = "sed -i '/KAFKA_ZOOKEEPER_CONNECT/d' /etc/confluent/docker/configure\n";
+                    command +=
+                        "echo 'kafka-storage format --ignore-formatted -t \"" +
+                        "$CLUSTER_ID" +
+                        "\" --add-scram SCRAM-SHA-256=[name=admin,password=admin] -c /etc/kafka/kafka.properties' >> /etc/confluent/docker/configure\n";
+                    return command;
                 }
+            }
+                .withKraft()
+                .withEnv("KAFKA_LISTENER_SECURITY_PROTOCOL_MAP", "PLAINTEXT:SASL_PLAINTEXT,BROKER:SASL_PLAINTEXT")
+                .withEnv("KAFKA_LISTENER_NAME_PLAINTEXT_SASL_ENABLED_MECHANISMS", "SCRAM-SHA-256")
+                .withEnv("KAFKA_SASL_MECHANISM_INTER_BROKER_PROTOCOL", "SCRAM-SHA-256")
+                .withEnv("KAFKA_SASL_ENABLED_MECHANISMS", "SCRAM-SHA-256")
+                .withEnv("KAFKA_OPTS", "-Djava.security.auth.login.config=/etc/kafka/secrets/kafka_server_jaas.conf")
+                .withCopyFileToContainer(
+                    MountableFile.forClasspathResource("kafka_server_jaas.conf"),
+                    "/etc/kafka/secrets/kafka_server_jaas.conf"
+                )
+        ) {
+            kafka.start();
+
+            testSecureScramKafkaFunctionality(kafka.getBootstrapServers());
+        }
+    }
+
+    @SneakyThrows
+    @Test
+    void enableSaslWithUnsuccessfulTopicCreation() {
+        try (
+            KafkaContainer kafka = new KafkaContainer(DockerImageName.parse("confluentinc/cp-kafka:6.2.1"))
+                .withEnv("KAFKA_LISTENER_SECURITY_PROTOCOL_MAP", "PLAINTEXT:SASL_PLAINTEXT,BROKER:SASL_PLAINTEXT")
+                .withEnv("KAFKA_SASL_MECHANISM_INTER_BROKER_PROTOCOL", "PLAIN")
+                .withEnv("KAFKA_LISTENER_NAME_PLAINTEXT_SASL_ENABLED_MECHANISMS", "PLAIN")
+                .withEnv("KAFKA_LISTENER_NAME_BROKER_SASL_ENABLED_MECHANISMS", "PLAIN")
+                .withEnv("KAFKA_LISTENER_NAME_BROKER_PLAIN_SASL_JAAS_CONFIG", getJaasConfig())
+                .withEnv("KAFKA_LISTENER_NAME_PLAINTEXT_PLAIN_SASL_JAAS_CONFIG", getJaasConfig())
+                .withEnv("KAFKA_AUTHORIZER_CLASS_NAME", "kafka.security.authorizer.AclAuthorizer")
+                .withEnv("KAFKA_SUPER_USERS", "User:admin")
+        ) {
+            kafka.start();
+
+            AdminClient adminClient = AdminClient.create(
+                ImmutableMap.of(
+                    AdminClientConfig.BOOTSTRAP_SERVERS_CONFIG,
+                    kafka.getBootstrapServers(),
+                    AdminClientConfig.SECURITY_PROTOCOL_CONFIG,
+                    "SASL_PLAINTEXT",
+                    SaslConfigs.SASL_MECHANISM,
+                    "PLAIN",
+                    SaslConfigs.SASL_JAAS_CONFIG,
+                    "org.apache.kafka.common.security.plain.PlainLoginModule required username=\"test\" password=\"secret\";"
+                )
             );
 
-            consumer.unsubscribe();
+            String topicName = "messages-" + UUID.randomUUID();
+            Collection<NewTopic> topics = Collections.singletonList(new NewTopic(topicName, 1, (short) 1));
+
+            Awaitility
+                .await()
+                .untilAsserted(() -> {
+                    assertThatThrownBy(() -> adminClient.createTopics(topics).all().get(30, TimeUnit.SECONDS))
+                        .hasCauseInstanceOf(TopicAuthorizationException.class);
+                });
+        }
+    }
+
+    @SneakyThrows
+    @Test
+    void enableSaslAndWithAuthenticationError() {
+        String jaasConfig = getJaasConfig();
+        try (
+            KafkaContainer kafka = new KafkaContainer(DockerImageName.parse("confluentinc/cp-kafka:6.2.1"))
+                .withEnv("KAFKA_LISTENER_SECURITY_PROTOCOL_MAP", "PLAINTEXT:SASL_PLAINTEXT,BROKER:SASL_PLAINTEXT")
+                .withEnv("KAFKA_SASL_MECHANISM_INTER_BROKER_PROTOCOL", "PLAIN")
+                .withEnv("KAFKA_LISTENER_NAME_PLAINTEXT_SASL_ENABLED_MECHANISMS", "PLAIN")
+                .withEnv("KAFKA_LISTENER_NAME_BROKER_SASL_ENABLED_MECHANISMS", "PLAIN")
+                .withEnv("KAFKA_LISTENER_NAME_BROKER_PLAIN_SASL_JAAS_CONFIG", jaasConfig)
+                .withEnv("KAFKA_LISTENER_NAME_PLAINTEXT_PLAIN_SASL_JAAS_CONFIG", jaasConfig)
+        ) {
+            kafka.start();
+
+            AdminClient adminClient = AdminClient.create(
+                ImmutableMap.of(
+                    AdminClientConfig.BOOTSTRAP_SERVERS_CONFIG,
+                    kafka.getBootstrapServers(),
+                    AdminClientConfig.SECURITY_PROTOCOL_CONFIG,
+                    "SASL_PLAINTEXT",
+                    SaslConfigs.SASL_MECHANISM,
+                    "PLAIN",
+                    SaslConfigs.SASL_JAAS_CONFIG,
+                    "org.apache.kafka.common.security.plain.PlainLoginModule required username=\"test\" password=\"secretx\";"
+                )
+            );
+
+            String topicName = "messages-" + UUID.randomUUID();
+            Collection<NewTopic> topics = Collections.singletonList(new NewTopic(topicName, 1, (short) 1));
+
+            Awaitility
+                .await()
+                .untilAsserted(() -> {
+                    assertThatThrownBy(() -> adminClient.createTopics(topics).all().get(30, TimeUnit.SECONDS))
+                        .hasCauseInstanceOf(SaslAuthenticationException.class);
+                });
         }
     }
 }

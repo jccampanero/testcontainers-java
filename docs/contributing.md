@@ -1,6 +1,6 @@
 # Contributing
 
-* Star the project on [Github](https://github.com/testcontainers/testcontainers-java) and help spread the word :)
+* Star the project on [GitHub](https://github.com/testcontainers/testcontainers-java) and help spread the word :)
 * Join our [Slack workspace](http://slack.testcontainers.org)
 * [Start a discussion](https://github.com/testcontainers/testcontainers-java/discussions) if you have an idea, find a possible bug or have a general question.
 * Contribute improvements or fixes using a [Pull Request](https://github.com/testcontainers/testcontainers-java/pulls). If you're going to contribute, thank you! Please just be sure to:
@@ -8,7 +8,7 @@
     * follow the style, naming and structure conventions of the rest of the project.
     * make commits atomic and easy to merge.
     * when updating documentation, please see [our guidance for documentation contributions](contributing_docs.md).
-    * apply format running `./gradlew spotlessApply`
+    * apply format running `./gradlew spotlessApply` (this requires [Node.js](https://nodejs.org/) to be installed on your machine, one of the [package managers](https://nodejs.org/en/download/package-manager/) might be handy)
     * verify all tests are passing. Build the project with `./gradlew check` to do this.
     **N.B.** Gradle's Build Cache is enabled by default, but you can add `--no-build-cache` flag to disable it.
 
@@ -97,7 +97,7 @@ We will evaluate incubating modules periodically, and remove the label when appr
 Since we generally get a lot of Dependabot PRs, we regularly combine them into single commits.
 For this, we are using the [gh-combine-prs](https://github.com/rnorth/gh-combine-prs) extension for [GitHub CLI](https://cli.github.com/).
 
-The whole process is as follow:
+The whole process is as follows:
 
 1. Check that all open Dependabot PRs did succeed their build. If they did not succeed, trigger a rerun if the cause were external factors or else document the reason if obvious.
 2. Run the extension from an up-to-date local `main` branch: `gh combine-prs --query "author:app/dependabot"`
