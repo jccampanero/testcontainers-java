@@ -4,6 +4,7 @@ import com.github.dockerjava.api.exception.InternalServerErrorException;
 import lombok.ToString;
 import lombok.extern.slf4j.Slf4j;
 import org.testcontainers.utility.DockerImageName;
+import org.testcontainers.utility.TestcontainersConfiguration;
 
 import java.time.Duration;
 
@@ -17,7 +18,9 @@ import java.time.Duration;
 @ToString
 public class DefaultPullRetryPolicy extends LimitedDurationPullRetryPolicy {
 
-    private static final Duration PULL_RETRY_TIME_LIMIT = Duration.ofMinutes(2);
+    private static final Duration PULL_RETRY_TIME_LIMIT = Duration.ofSeconds(
+        TestcontainersConfiguration.getInstance().getImagePullTimeout()
+    );
 
     public DefaultPullRetryPolicy() {
         super(PULL_RETRY_TIME_LIMIT);
