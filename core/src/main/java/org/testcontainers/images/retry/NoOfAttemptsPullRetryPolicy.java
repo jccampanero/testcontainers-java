@@ -30,6 +30,11 @@ public class NoOfAttemptsPullRetryPolicy implements ImagePullRetryPolicy {
     }
 
     @Override
+    public void pullStarted() {
+        currentNoOfAttempts.set(0);
+    }
+
+    @Override
     public boolean shouldRetry(DockerImageName imageName, Throwable error) {
         return currentNoOfAttempts.incrementAndGet() <= maxAllowedNoOfAttempts;
     }
