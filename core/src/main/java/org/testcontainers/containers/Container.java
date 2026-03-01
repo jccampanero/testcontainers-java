@@ -300,7 +300,8 @@ public interface Container<SELF extends Container<SELF>> extends LinkableContain
 
     /**
      * Set the image retry on pull error policy of the container
-     * @return
+     * @param policy the image pull retry policy
+     * @return this
      */
     SELF withImagePullRetryPolicy(ImagePullRetryPolicy policy);
 
