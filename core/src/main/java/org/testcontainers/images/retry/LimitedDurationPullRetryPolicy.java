@@ -7,6 +7,7 @@ import org.testcontainers.utility.DockerImageName;
 
 import java.time.Duration;
 import java.time.Instant;
+import java.util.Objects;
 
 /**
  * An ImagePullRetryPolicy which will retry a failed image pull if the time elapsed since the
@@ -20,12 +21,10 @@ public class LimitedDurationPullRetryPolicy implements ImagePullRetryPolicy {
     @Getter
     private final Duration maxAllowedDuration;
 
-    Instant lastRetryAllowed;
+    private Instant lastRetryAllowed;
 
     public LimitedDurationPullRetryPolicy(Duration maxAllowedDuration) {
-        if (maxAllowedDuration == null) {
-            throw new NullPointerException("maxAllowedDuration should not be null");
-        }
+        Objects.requireNonNull(maxAllowedDuration, "maxAllowedDuration should not be null");
 
         if (maxAllowedDuration.isNegative()) {
             throw new IllegalArgumentException("maxAllowedDuration should not be negative");
