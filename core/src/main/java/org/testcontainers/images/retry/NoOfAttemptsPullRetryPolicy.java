@@ -5,6 +5,8 @@ import lombok.ToString;
 import lombok.extern.slf4j.Slf4j;
 import org.testcontainers.utility.DockerImageName;
 
+import java.util.concurrent.atomic.AtomicInteger;
+
 /**
  * An ImagePullRetryPolicy which will retry a failed image pull if the number of attempts
  * is less than or equal to the configured {@link #maxAllowedNoOfAttempts}.
@@ -17,13 +19,9 @@ public class NoOfAttemptsPullRetryPolicy implements ImagePullRetryPolicy {
     @Getter
     private final int maxAllowedNoOfAttempts;
 
-    private int currentNoOfAttempts = 0;
+    private final AtomicInteger currentNoOfAttempts = new AtomicInteger(0);
 
-    public NoOfAttemptsPullRetryPolicy(Integer maxAllowedNoOfAttempts) {
-        if (maxAllowedNoOfAttempts == null) {
-            throw new NullPointerException("maxAllowedNoOfAttempts should not be null");
-        }
-
+    public NoOfAttemptsPullRetryPolicy(int maxAllowedNoOfAttempts) {
         if (maxAllowedNoOfAttempts < 0) {
             throw new IllegalArgumentException("maxAllowedNoOfAttempts should not be negative");
         }
@@ -33,6 +31,6 @@ public class NoOfAttemptsPullRetryPolicy implements ImagePullRetryPolicy {
 
     @Override
     public boolean shouldRetry(DockerImageName imageName, Throwable error) {
-        return ++currentNoOfAttempts <= maxAllowedNoOfAttempts;
+        return currentNoOfAttempts.incrementAndGet() <= maxAllowedNoOfAttempts;
     }
 }
